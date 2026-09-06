@@ -214,6 +214,4 @@ MIPS_SWP killed renamable $x11, killed renamable $x12, renamable $x10, 0 ::
 
 ## 6. 这段演化说明了什么
 
-21 里这是一个"给某个厂商扩展做配对合并"的专用 pass；23 里它变成了一个**共享框架**：扫描、别名分析、窗口、合并的骨架公用，各厂商扩展只贡献一个 `tryConvertToXxx` 与一个 SubtargetFeature。
-
 对"想给 RISCV 后端加自己的访存扩展"这件事，21 → 23 的那 610 行差异就是最直接的答案：不是新开一个文件、新注册一个 pass，而是**在既有 pass 里加一条分支加一个 feature**。这样做的收益是别名分析、扫描窗口、`kill` 标志维护、memref 合并这些容易写错的部分完全复用，而且未来跟上游同步时不会冲突。
