@@ -15,3 +15,4 @@
 | 目录 | 内容 |
 |---|---|
 | [src/ccache-guide](../src/ccache-guide/README.md) | ccache：缓存键模型、配置、接入 Make / Autotools / CMake / Meson / LLVM / CI、远端存储、诊断、坑与版本差异。每个结论配可运行的例子，在 ccache 4.13.6 与 4.14 上核对 |
+| [src/riscv-toolchain-driver](../src/riscv-toolchain-driver/README.md) | clang driver 里的 RISC-V 裸机工具链（`RISCVToolchain.cpp`）：driver 模型、链接零基础、`ToolChain` 基类、GCC 探测与 multilib、文件逐段精读、2018–2025 历史与并入 `BareMetal.cpp` 的映射、改法与坑。例子在 clang 20.1.8 与 21.1.8 上核对 |
