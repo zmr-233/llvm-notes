@@ -1,0 +1,42 @@
+# github-actions.yml —— 在 GitHub Actions 里用 ccache 构建一个 CMake 工程
+#
+# 未实跑（这里没有 GitHub runner）。本地可复现的等价流程是同目录的 run.sh，每一步都对得上：
+#   ccache-action 的 restore 阶段 = run.sh 第 1–3 步；post（save）阶段 = 第 5–7 步。
+# 输入项依据 hendrikmuhs/ccache-action 的 action.yml 与 src/save.ts（2026-09-13 核对，最新发布 v1.2.24）；
+# actions/checkout 最新发布 v7.0.1（同日核对）。
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: install ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          # 附加进缓存键：不同作业、不同矩阵项各存各的
+          key: ${{ github.job }}-${{ runner.os }}
+          # 缓存上限（默认 500MB）
+          max-size: 2G
+          # 保存前淘汰本作业没用到的条目。"job" 是 ccache-action 的特殊值：
+          # 按本作业已运行的秒数调用 ccache --evict-older-than，与 run.sh 第 6 步同义
+          evict-old-files: job
+
+      - name: configure
+        # Release 不带 -g，工作目录不进键；要缓存 Debug 构建，参见 ../03-cross-dir
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: build
+        run: cmake --build build
