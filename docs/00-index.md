@@ -16,3 +16,4 @@
 |---|---|
 | [src/ccache-guide](../src/ccache-guide/README.md) | ccache：缓存键模型、配置、接入 Make / Autotools / CMake / Meson / LLVM / CI、远端存储、诊断、坑与版本差异。每个结论配可运行的例子，在 ccache 4.13.6 与 4.14 上核对 |
 | [src/riscv-toolchain-driver](../src/riscv-toolchain-driver/README.md) | clang driver 里的 RISC-V 裸机工具链（`RISCVToolchain.cpp`）：driver 模型、链接零基础、`ToolChain` 基类、GCC 探测与 multilib、文件逐段精读、2018–2025 历史与并入 `BareMetal.cpp` 的映射、改法与坑。例子在 clang 20.1.8 与 21.1.8 上核对 |
+| [src/git-rebase-onto](../src/git-rebase-onto/README.md) | `git rebase --onto A B C`：三个参数各决定什么、内部执行顺序与源码对应、十几种写法的结果、重复提交的两套判定（预检比 B 不比 A）、冲突时 ours/theirs、叠放分支与 `--fork-point` / `--update-refs`、merge 与 autostash 的坑。例子在 git 2.55.0 上核对 |
