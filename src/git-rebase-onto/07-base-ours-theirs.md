@@ -172,3 +172,96 @@ git -C $WT diff HEAD -- $f     # 只剩 664a388 自己的那 3 行，没有 prin
 git -C $WT add -A && git -C $WT rebase --continue
 just rebuild --keep
 ```
+
+## 摘掉 C 时停在 X：ours 不总是 C^
+
+读完上面几节，容易这样复述：
+
+```
+git rebase --onto C^ C branch      摘掉 C
+ours   = C^
+base   = X^
+theirs = X                         X 是停下来的那个提交
+```
+
+再碰上 X 紧跟在 C 后面（X^ == C），就变成 ours = C^、base = C、theirs = X。于是 ours 看起来是 base 的父提交，开始纠结「ours 和 base 到底什么关系」。
+
+这段复述里 base 和 theirs 是对的，base 只由 X 决定，就是 X^。ours 那一行不对。ours 是 rebase 停下那一刻的 HEAD，也就是 C^ 加上 C 和 X 之间那些提交重放后的新副本。只有 X 是 C 之后第一个被重放的提交时，还没有重放过任何提交，ours 才正好等于 C^。一般形式是：
+
+```
+原历史      C^ -> C -> C1 -> C2 -> ... -> X
+重放到 X 时
+ours   = HEAD = C^ + C1' + C2' + ...     C1' 是 C1 重放后的新提交
+base   = X^   = 原历史里 X 的父提交
+theirs = X
+```
+
+在 C 和 X 之间插一个和冲突文件无关的提交 M，X 就不再紧跟 C：
+
+```bash
+git init -q -b rel demo && cd demo && git config merge.conflictStyle diff3
+printf 'a\nc\n' > f; echo x > g; git add . && git commit -qm release
+git switch -qc br
+printf 'a\nb\nc\n' > f; git commit -qam C      # C 在 f 里加了 b
+echo y >> g;            git commit -qam M      # M 只动 g，和 f 无关
+printf 'a\nB\nc\n' > f; git commit -qam X      # X 把 b 改成 B
+C=$(git rev-parse HEAD~2)
+git rebase --onto $C^ $C br >/dev/null 2>&1    # 摘掉 C：M 干净重放，停在 X
+echo "ours   = $(git log -1 --format='%h %s' HEAD)   它的父 = $(git log -1 --format='%h %s' HEAD^)"
+echo "base   = $(git log -1 --format='%h %s' REBASE_HEAD^)"
+echo "theirs = $(git log -1 --format='%h %s' REBASE_HEAD)"
+```
+
+实跑输出（sha 每次不同）：
+
+```
+ours   = 103288f M   它的父 = fb7b587 release     重放出来的新 M，不是 C^
+base   = f978ae0 M                                原历史里的 M
+theirs = 1c4343b X
+```
+
+f 里的冲突块，和前面第 4 种一样是一删一改：
+
+```
+a
+<<<<<<< HEAD
+||||||| parent of 1c4343b (X)
+b
+=======
+B
+>>>>>>> 1c4343b (X)
+c
+```
+
+所以「ours 和 base 无关」要收窄着说。按定义两者确实无关：base 只看 X，ours 只看新分支重放到了哪里。但在「摘掉 C」这种 rebase 里，两者的内容有固定关系。base 是 C^ 加 C 加 C1…，ours 是 C^ 加 C1'…；C 和 X 之间的提交都干净重放时，两者只差一个 C。同一次实跑：
+
+```
+git diff REBASE_HEAD^ HEAD -- f     base -> ours
+ a
+-b
+ c
+
+git show C -- f                     C 自己的改动
+ a
++b
+ c
+```
+
+不管 X 是第几个提交，base 到 ours 这个 diff 都是「撤销 C」。X^ == C 只是让 ours 恰好等于 C^，看起来 ours 和 base 像父子关系；换成别的 X，两者不再是父子，这个 diff 不变。如果 C 和 X 之间某个提交也冲突过，是手工解的，ours 和 base 之间还会多出那次解法带来的差别。
+
+由此可以推出：摘掉 C 的 rebase 停下，一定是因为 X 的改动碰到了「撤销 C」动过的行。冲突块里 ours 那一段，是这块区域在 C 之前的样子：
+
+- C 新加的行：ours 段是空的，就是上面的一删一改。
+- C 改过的行：ours 段是 C 之前的原文。比如 C 把 b 改成 b2，X 又把 b2 改成 B，停下时是：
+
+```
+a
+<<<<<<< HEAD
+b
+||||||| parent of 3c8c9e4 (X)
+b2
+=======
+B
+>>>>>>> 3c8c9e4 (X)
+c
+```
