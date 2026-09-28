@@ -17,3 +17,4 @@
 | [src/ccache-guide](../src/ccache-guide/README.md) | ccache：缓存键模型、配置、接入 Make / Autotools / CMake / Meson / LLVM / CI、远端存储、诊断、坑与版本差异。每个结论配可运行的例子，在 ccache 4.13.6 与 4.14 上核对 |
 | [src/riscv-toolchain-driver](../src/riscv-toolchain-driver/README.md) | clang driver 里的 RISC-V 裸机工具链（`RISCVToolchain.cpp`）：driver 模型、链接零基础、`ToolChain` 基类、GCC 探测与 multilib、文件逐段精读、2018–2025 历史与并入 `BareMetal.cpp` 的映射、改法与坑。例子在 clang 20.1.8 与 21.1.8 上核对 |
 | [src/git-rebase-onto](../src/git-rebase-onto/README.md) | `git rebase --onto A B C`：三个参数各决定什么、内部执行顺序与源码对应、十几种写法的结果、重复提交的两套判定（预检比 B 不比 A）、冲突时 ours/theirs、叠放分支与 `--fork-point` / `--update-refs`、merge 与 autostash 的坑。例子在 git 2.55.0 上核对 |
+| [src/riscv-registers](../src/riscv-registers/README.md) | RISC-V 的整数、浮点、向量寄存器与 CSR：psABI 分工、压缩指令为什么偏向 x8–x15、LLVM 的分配顺序与保留集、调用约定与序言的三种写法、gp 链接器松弛、中断处理函数保存什么、`-march` 与 `-mabi` 的组合、trap 进出时硬件改什么。例子是一个个 C 小实验，预期输出写在注释里，在 llvmorg-21.1.8 上核对 |

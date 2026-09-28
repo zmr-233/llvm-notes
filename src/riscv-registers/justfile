@@ -1,0 +1,49 @@
+# RISC-V 寄存器实验的四个动词，在本目录下运行。
+# 工具路径全部来自同目录的 .env（格式见 README.md），缺文件或缺键即失败。
+# 中间产物放在 mktemp 建的临时目录里，命令结束即删除。
+
+set dotenv-load := true
+set dotenv-required := true
+
+target := "--target=riscv32-unknown-elf"
+
+# 编译成汇编，删掉汇编指示、注释行和标签后的「# @函数名」，只留标签和指令
+asm file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -S -o - {{ file }} \
+      | grep -vE '^\s+\.|^\s*#|^$|^\.Lfunc_end|^\.Ltmp' | sed 's/:[[:space:]]*# @.*$/:/'
+
+# 编译成目标文件再反汇编。每行是「偏移: 编码  指令」，编码 4 位十六进制的是 2 字节压缩指令
+dis file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -c -o "$d/a.o" {{ file }}
+    "${OBJDUMP:?.env 缺 OBJDUMP}" -d -M no-aliases "$d/a.o" | sed '1,/^Disassembly/d'
+
+# 编译成目标文件，列出每个函数占多少字节
+size file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -c -o "$d/a.o" {{ file }}
+    "${READELF:?.env 缺 READELF}" -s --wide "$d/a.o" | awk '$4 == "FUNC" { printf "%-12s %4d 字节\n", $8, $3 }'
+
+# 编译或汇编成目标文件，列出重定位项（链接器要改写的位置）
+reloc file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -c -o "$d/a.o" {{ file }}
+    "${READELF:?.env 缺 READELF}" -r --wide "$d/a.o" | sed -n '/Offset/,$p'
+
+# gp 实验：汇编启动代码、编译 ex/gp/main.c、按 ex/gp/link.ld 链接，再反汇编
+gp start *ldflags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+    "${CLANG:?.env 缺 CLANG}" {{ target }} -march=rv32imc -mabi=ilp32 -mrelax -c -o "$d/start.o" {{ start }}
+    "${CLANG:?.env 缺 CLANG}" {{ target }} -march=rv32imc -mabi=ilp32 -mrelax -Os -c -o "$d/main.o" ex/gp/main.c
+    "${LLD:?.env 缺 LLD}" -T ex/gp/link.ld {{ ldflags }} "$d/start.o" "$d/main.o" -o "$d/a.elf"
+    "${OBJDUMP:?.env 缺 OBJDUMP}" -d -M no-aliases "$d/a.elf" | sed '1,/^Disassembly/d'
