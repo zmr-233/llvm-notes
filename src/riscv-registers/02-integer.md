@@ -60,16 +60,150 @@ x28–x31   t3–t6    临时              调用者保存
 
 ## 3. 硬件区别对待的地方
 
-除了 x0，基础指令集里 x1–x31 在编码上完全对称，任何指令的 rd、rs1、rs2 字段都能写任何一个。
-区别只出现在下面几处。
+除了 x0，基础指令集里 x1–x31 在编码上完全对称：32 位指令的 rd（写哪个寄存器）、rs1、rs2
+（读哪个寄存器）各占 5 位，能写 0–31 中任何一个编号。把 `add a0, a1, a2` 的 a0 换成 s5，
+硬件执行起来没有区别。区别只在三处：
 
-- 返回地址栈的提示。有些处理器用一个小的硬件栈预测函数的返回地址：jal、jalr 的 rd 是 x1 或 x5 时
-  往里压，jalr 的 rs1 是 x1 或 x5 时往外弹。所以返回地址只放在 ra（x1）或 t0（x5）。
-  LLVM 为此不让普通的间接跳转用这两个寄存器：`RISCV/RISCVRegisterInfo.td:278` 的注释写明了原因，
-  下面 :282 的 GPRJALR 类去掉了 x0–x5。`-msave-restore` 把 t0 当第二个链接寄存器用（03 第 2 节）。
-- 压缩指令的隐含寄存器。c.lwsp、c.swsp、c.addi16sp、c.addi4spn 的基址固定是 sp，
-  指令里不占寄存器字段。c.jal 固定写 ra，而且只在 RV32 上有（`RISCV/RISCVInstrInfoC.td:419–420`）。
-- 压缩指令的 3 位寄存器字段，见第 4 节。
+- x1、x5 是链接寄存器（3.1）；
+- 有些压缩指令把 sp、ra、x0 写死在操作码里（3.2）；
+- 压缩指令的 3 位寄存器字段（第 4 节）。
+
+本节引用的 RISC-V 规范按 riscv-isa-manual 的 20250508 标签，`rv32.adoc`、`c-st-ext.adoc`
+指它 `src/` 下的两个文件。
+
+### 3.1 链接寄存器 x1、x5
+
+先定义要用到的几个词。
+
+- jal 和 jalr：
+  ```
+  jal  rd, 偏移         rd ← pc+4 ；pc ← pc+偏移
+  jalr rd, 偏移(rs1)    rd ← pc+4 ；pc ← rs1+偏移
+  ```
+  RISC-V 没有专门的调用、返回指令。`call f` 是 `jal ra, f` 或 auipc 加 `jalr ra`，`ret` 是
+  `jalr zero, 0(ra)`，调用函数指针是 `jalr ra, 0(指针)`。
+- 分支预测：处理器取指走在执行前面，一条跳转的目标还没算出来，后面的指令已经在取了。
+  jalr 的目标在寄存器里，取指时只能猜；猜错了，取进来的指令作废，损失若干周期。
+- 返回地址栈（return-address stack，RAS）：预测器里一个小的硬件栈。遇到调用，把返回地址压进去；
+  遇到返回，弹出栈顶当作预测的目标。
+- hint：写在编码里给硬件的提示，只影响性能，不改变执行结果。
+
+调用和返回用的都是 jal、jalr，处理器只能看寄存器编号来分辨。规范把 x1（ra）和 x5（t0）叫作
+链接寄存器，规定 RAS 这样动（`rv32.adoc:518` 起的正文和 :526 的表）：
+
+```
+jal   rd 是链接寄存器                压
+jalr  rd 是，rs1 不是                压          jalr ra, 0(a0)     调用函数指针
+jalr  rd 不是，rs1 是                弹          jalr zero, 0(ra)   ret
+jalr  rd、rs1 都是，编号不同          先弹再压    规范说是给协程切换用的（:551）
+jalr  rd、rs1 都是，编号相同          压          jalr ra, 0(ra)     call 展开成 auipc ra 加这条
+jalr  rd、rs1 都不是                 不动        jalr zero, 0(a5)   普通间接跳转
+```
+
+这些规则不影响执行结果，没有 RAS 的处理器不看它们。但它们要求编译器不把跳转目标放在 ra、t0 里：
+
+- 调用函数指针写成 `jalr ra, 0(t0)`：rd、rs1 都是链接寄存器且编号不同，先弹再压。弹掉的是
+  当前函数自己的返回地址，等它 ret 时栈顶已经不对。
+- 间接尾调用写成 `jalr zero, 0(t0)`：被当成返回，拿栈顶当预测目标，真正的目标却是函数指针；
+  栈还少了一项，后面的返回跟着错位。
+
+编号相同那一行只压不弹，普通的 `call f` 就靠它：目标文件里 `call f` 是 `auipc ra, …` 加
+`jalr ra, …(ra)`，rd、rs1 都是 ra。规范说这样定是为了让这一对指令能合并成一条执行（macro-op fusion，`rv32.adoc:553`）。
+
+LLVM 用寄存器类落实这一点。寄存器类是一个操作数允许使用的寄存器集合，分配器只在里面挑；
+值如果待在集合外的寄存器里，就插一条拷贝挪进来。
+
+- 间接调用 PseudoCALLIndirect（`RISCV/RISCVInstrInfo.td:1793`）和间接跳转 PseudoBRIND
+  （:1734，switch 编成跳转表时用它）的操作数类是 GPRJALR（`RISCV/RISCVRegisterInfo.td:282`），
+  即 GPR 去掉 x0–x5。:278 的注释说明，去掉 x1、x5 是因为返回地址栈；x0、x2、x3、x4 本来就在
+  保留集里（第 6 节），一起去掉只是让 TableGen 少生成几个寄存器类。
+- 间接尾调用 PseudoTAILIndirect（`RISCVInstrInfo.td:1822`）的操作数类是 GPRTC
+  （`RISCVRegisterInfo.td:293`），只有 x6–x7、x10–x17、x28–x31：去掉了 x5，也去掉了全部被调用者
+  保存寄存器。:288 的注释说明后者的原因：尾声先把它们恢复成旧值再跳，地址放在里面会被覆盖。
+
+实验 `ex/jalr.c`（`-march=rv32im -Os`），把函数指针固定在不同寄存器里，摘出和跳转有关的几条：
+
+```
+指针固定在   调用函数指针
+t1          addi t1,a0,0 ; jalr ra,0(t1)
+t0          addi t0,a0,0 ; addi a0,t0,0 ; jalr ra,0(a0)             多挪一次
+
+指针固定在   间接尾调用
+t1          addi t1,a0,0 ; jalr zero,0(t1)
+t0          addi t0,a0,0 ; addi t1,t0,0 ; jalr zero,0(t1)           多挪一次
+s2          addi s2,a0,0 ; addi t1,s2,0 ; lw s2,12(sp) ; … ; jalr zero,0(t1)
+```
+
+- 每行第一条 addi 来自把指针固定到该寄存器的写法本身。
+- s2 那行：地址先挪进 t1，再恢复 s2，最后用 t1 跳。
+- 这个限制只在编译器里。手写 `jalr ra, 0(t0)` 照样能汇编（`ex/rvc-fixed.S` 最后一行）。
+
+x5 做第二个链接寄存器，规范在 JAL 一节的注释里说明了用处：调用保存、恢复寄存器的小段库代码
+（规范叫 millicode）时，不必动 ra；选 x5，是因为它在标准调用约定里是临时寄存器，编码又和 x1
+只差一位（`rv32.adoc:443` 起）。`-msave-restore`（03 第 2 节）就是这样用的：
+
+- `call t0, __riscv_save_1` 在目标文件里是 `auipc t0, …` 加 `jalr t0, …(t0)`，rd、rs1 是同一个
+  链接寄存器，按上表是压。此刻 ra 里是函数自己的返回地址，不能覆盖。
+- llvmorg-21.1.8 的 `compiler-rt/lib/builtins/riscv/save.S` 里，RV32 的 `__riscv_save_1` 以
+  `jr t0` 结尾（:95），即 `jalr zero, 0(t0)`，是弹。一压一弹正好配对。
+
+### 3.2 压缩指令写死的寄存器
+
+C 扩展把常用指令编成 16 位，16 位里放不下三个 5 位字段。规范 C 扩展一章的概述列出了能压缩的
+情形（`c-st-ext.adoc:14` 起）：
+
+- 立即数或偏移小；
+- 某个寄存器是 x0、ra 或 sp；
+- 目的寄存器就是第一个源寄存器；
+- 用的是最常用的 8 个寄存器，即 x8–x15（第 4 节）。
+
+第二种情形的做法是寄存器不占字段，由操作码决定，省下的位给立即数和另一个寄存器：
+
+- 基址写死是 sp：c.lwsp、c.swsp，以及 c.addi16sp（sp 加一个 16 的倍数）、c.addi4spn
+  （sp 加一个立即数，结果写进 x8–x15 之一）。单独给 sp 一套访存指令，规范给的理由是在栈上
+  存取太常见（`c-st-ext.adoc:175` 起）。
+- 目的寄存器写死是 ra：c.jal、c.jalr。
+- 目的寄存器写死是 x0：c.j、c.jr。
+
+实验 `ex/rvc-fixed.S`：一组 32 位写法交给汇编器，开 C 扩展，看各自压成什么。
+
+```
+写法                压成                    字节
+lw   a0, 4(sp)      c.lwsp a0, 4(sp)       2     基址写死是 sp，数据寄存器是 5 位字段
+lw   t1, 4(sp)      c.lwsp t1, 4(sp)       2
+lw   a0, 4(a1)      c.lw   a0, 4(a1)       2     基址不是 sp，两个 3 位字段
+lw   a0, 4(t1)      lw                     4
+addi a0, sp, 8      c.addi4spn a0, sp, 8   2
+addi t1, sp, 8      addi                   4     c.addi4spn 的目的寄存器是 3 位字段
+addi sp, sp, -64    c.addi16sp sp, -64     2
+addi a0, a0, -64    addi                   4     普通 c.addi 的立即数只有 -32…31
+jal  ra, L          c.jal L                2
+jal  t0, L          jal t0, L              4
+jal  zero, L        c.j L                  2
+jalr ra, 0(t0)      c.jalr t0              2
+```
+
+- 16 位的调用只有 c.jal、c.jalr，目的寄存器都是 ra，所以 `call t0, …` 压不成 2 字节。
+- c.jal 只在 RV32 上有，RV64 上同一组编码是 c.addiw（`c-st-ext.adoc:479`、:576）。LLVM 里
+  `RISCV/RISCVInstrInfoC.td:420` 的 C_JAL 和 :425 的 C_ADDIW 操作码都是 `0b001, 0b01`，C_JAL
+  带 IsRV32 条件（:419）。实验 cell 2 按 RV64 汇编，`jal ra, L` 是 4 字节。
+- LLVM 里写死的寄存器出现在两处。一是操作数的寄存器类只含一个寄存器，例如 C_ADDI16SP 的操作数
+  类 SP（`RISCVInstrInfoC.td:438`）只有 X2。二是压缩对照表 CompressPat 直接写寄存器名：
+  ```
+  (JAL X1, …)          → C_JAL        :912，只在 IsRV32 下
+  (JAL X0, …)          → C_J          :967
+  (JALR X0, rs1, 0)    → C_JR         :1012
+  (JALR X1, rs1, 0)    → C_JALR       :1024
+  (ADDI X2, X2, …)     → C_ADDI16SP   :924
+  ```
+
+### 3.3 三处对寄存器分配的影响
+
+- 链接寄存器：硬限制。GPRJALR、GPRTC 里没有 ra、t0，分配器不会选它们，需要时插拷贝。
+- 写死的 sp、ra、x0：分配器不用做什么。sp 在保留集里，栈访问本来就用 sp；调用本来就写 ra。
+  序言、尾声里的存取因此几乎都能压成 c.swsp、c.lwsp，各实验里的 `c.swsp ra, 12(sp)` 都是这样来的。
+- 3 位字段：没有硬限制，只是用了 x8–x15 以外的寄存器，那条指令就压不了。LLVM 用代价让分配器
+  偏向 x8–x15（第 5 节）。
 
 ## 4. 压缩指令为什么偏向 x8–x15
 

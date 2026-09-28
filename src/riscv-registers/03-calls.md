@@ -45,7 +45,7 @@ keep   addi sp,sp,-16 ; sw ra,12(sp) ; sw s0,8(sp) ; mv s0,a0
 - `-msave-restore`：序言和尾声换成调用库函数 `__riscv_save_N`、`__riscv_restore_N`，N 是要存的
   s 寄存器个数。这两组函数由 compiler-rt 或 libgcc 提供。
   - 调用写的是 `call t0, …`，返回地址放进 t0：此刻 ra 里还是 keep 自己的返回地址，不能覆盖。
-    t0 是硬件认作链接寄存器的另一个编号（02 第 3 节）。
+    t0 是硬件认作链接寄存器的另一个编号（02 第 3.1 节）。
   - llvmorg-21.1.8 的 `compiler-rt/lib/builtins/riscv/save.S` 里，RV32 上 `__riscv_save_0` 到
     `__riscv_save_3` 是同一个入口，存 ra、s0、s1、s2；`__riscv_save_4` 到 `__riscv_save_7` 是
     另一个入口，存 ra 和 s0–s6。存的比需要的多，换来函数本身只有首尾两条调用。

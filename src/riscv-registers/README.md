@@ -6,7 +6,8 @@ RISC-V 有哪些寄存器（整数、浮点、向量、CSR），psABI 怎么给�
 ## 读的顺序
 
 1. [01-basics.md](01-basics.md)：前提词，五类寄存器的全貌
-2. [02-integer.md](02-integer.md)：整数寄存器 x0–x31；x0；压缩指令为什么偏向 x8–x15；LLVM 的分配顺序与保留集
+2. [02-integer.md](02-integer.md)：整数寄存器 x0–x31；x0；链接寄存器与压缩指令写死的寄存器；压缩指令为什么偏向 x8–x15；
+   LLVM 的分配顺序与保留集
 3. [03-calls.md](03-calls.md)：调用约定：保存责任、序言的三种写法、参数与返回值、fp、gp、tp、中断处理函数
 4. [04-float.md](04-float.md)：浮点寄存器、fcsr、`-march` 与 `-mabi` 的组合
 5. [05-vector.md](05-vector.md)：向量寄存器与 vl、vtype、vlenb
@@ -19,13 +20,15 @@ RISC-V 有哪些寄存器（整数、浮点、向量、CSR），psABI 怎么给�
 - LLVM 源码行号按 llvmorg-21.1.8（提交 2078da43e25a）。文中 `RISCV/` 是 `llvm/lib/Target/RISCV/` 的简写。
 - trap 和 CSR 访问时硬件做什么，编译器实验看不到，按 QEMU v11.1.1 的 `target/riscv/` 源码核对。
   QEMU 是按 RISC-V 规范实现的模拟器。
+- RISC-V 规范按 riscv-isa-manual 仓库的 20250508 标签核对，只在 02 第 3 节引用。
 - 书：Quentin Colombet，《LLVM Code Generation》，Packt 2025，页码按印刷版。
 - justfile 在 just 1.58.0 上核对。
 
 ## 跑实验
 
-每个实验是 `ex/` 下的一个 C 文件，gp 实验是 `ex/gp/` 目录。文件开头的注释按 cell 排：
-一段说明、一条命令、这条命令的预期输出、看点。在本目录下复制命令运行，对照输出。
+每个实验是 `ex/` 下的一个 C 文件（`ex/rvc-fixed.S` 是汇编文件，同样交给 clang），gp 实验是
+`ex/gp/` 目录。文件开头的注释按 cell 排：一段说明、一条命令、这条命令的预期输出、看点。
+在本目录下复制命令运行，对照输出。
 
 ### 准备 .env
 
@@ -91,6 +94,8 @@ auipc 加 jalr 两条共 8 字节；链接时如果目标够近，链接器会�
 ## 实验一览
 
 - `ex/x0.c`：x0 与伪指令（02）
+- `ex/jalr.c`：间接调用、间接尾调用不用 t0 做目标寄存器（02）
+- `ex/rvc-fixed.S`：压缩指令写死的 sp、ra、x0，以及 RV64 没有 c.jal（02）
 - `ex/rvc.c`：压缩指令只认 x8–x15（02）
 - `ex/save.c`：保存责任、`-msave-restore`、Zcmp、帧指针（03）
 - `ex/save-many.c`：要存的寄存器多时，三种序言写法的大小（03）
