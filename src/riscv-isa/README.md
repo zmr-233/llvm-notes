@@ -1,10 +1,10 @@
 # RISC-V 指令集基础
 
-指令怎么编码、常数怎么装进寄存器、怎么访问内存和全局变量、分支和跳转能跳多远，以及跳转距离
-不够时编译器、汇编器、链接器分别补在哪一步。每个结论要么有 `ex/` 下的实验可以复现，要么注明在
-哪份文档或源码的哪一行核对过。
+指令怎么编码、常数怎么装进寄存器、怎么访问内存和全局变量、分支和跳转能跳多远，跳转距离不够时
+编译器、汇编器、链接器分别补在哪一步，一次函数调用从 call 到 ret 的全过程，以及处理器怎么预测
+返回地址。每个结论要么有 `ex/` 下的实验可以复现，要么注明在哪份文档或源码的哪一行核对过。
 
-寄存器本身（x0–x31 的分工、调用约定、CSR）在 [riscv-registers](../riscv-registers/README.md)。
+寄存器本身（x0–x31 的分工、CSR）和调用约定的各种变化在 [riscv-registers](../riscv-registers/README.md)。
 XLEN、扩展、`-march`、`-mabi`、伪指令、链接器松弛这些词在它的
 [01-basics.md](../riscv-registers/01-basics.md) 里定义，本专题直接使用。
 
@@ -16,6 +16,10 @@ XLEN、扩展、`-march`、`-mabi`、伪指令、链接器松弛这些词在它�
    `%pcrel_hi`/`%pcrel_lo`）；`%pcrel_lo` 的括号里为什么是 auipc 的标签；代码模型
 4. [04-control.md](04-control.md)：比较与条件分支；jal、jalr 的范围；距离不够时编译器、汇编器、
    链接器各做什么；call 与 tail
+5. [05-calls.md](05-calls.md)：从零讲函数调用。call 与 ret，栈与栈帧，两种保存责任，参数与返回值，
+   序言与尾声，叶函数与尾调用
+6. [06-ras.md](06-ras.md)：返回地址栈按 jalr 的寄存器编号压、弹；它为什么限制了间接调用、间接尾调用
+   能用的寄存器；x5 与 millicode（-msave-restore）；millicode 与微码的区别
 
 ## 版本与出处
 
@@ -25,7 +29,10 @@ XLEN、扩展、`-march`、`-mabi`、伪指令、链接器松弛这些词在它�
 - 指令集规范按 riscv-isa-manual 仓库（github.com/riscv/riscv-isa-manual）的 20250508 标签核对。
   文中 `intro.adoc`、`rv32.adoc` 指它 `src/` 下的这两个文件。
 - psABI（RISC-V ELF psABI，规定目标文件格式、重定位、代码模型）按 riscv-elf-psabi-doc 仓库
-  （github.com/riscv-non-isa/riscv-elf-psabi-doc）的 v1.0 标签核对。文中 `psABI` 指其中的 `riscv-elf.adoc`。
+  （github.com/riscv-non-isa/riscv-elf-psabi-doc）的 v1.0 标签核对。文中 `psABI` 指其中的 `riscv-elf.adoc`；
+  05 引用的 `riscv-cc.adoc` 是同一标签下讲调用约定的文件。
+- compiler-rt 的 `lib/builtins/riscv/save.S`、`restore.S` 按 llvmorg-21.1.8。
+- 06 第 9 节引用的 Linux 文档按 Linux 7.2.3 源码树。
 - justfile 在 just 1.58.0 上核对。
 
 ## 跑实验
@@ -107,3 +114,5 @@ LLD=/path/to/bin/ld.lld
 - `ex/far.c`：跳得越来越远时编译器生成什么（04）
 - `ex/far.s`：手写的 beq 跳得太远时汇编器怎么办（04）
 - `ex/call.s`：call、tail 与链接器松弛（04）
+- `ex/ret.c`：参数与返回值放在哪，RV32 与 RV64 对比（05）
+- `ex/frame.c`：序言与尾声、叶函数、尾调用，call/tail/ret 的真实指令，-msave-restore（05、06）

@@ -107,6 +107,8 @@ jalr  rd、rs1 都不是                 不动        jalr zero, 0(a5)   普通
 - 间接尾调用写成 `jalr zero, 0(t0)`：被当成返回，拿栈顶当预测目标，真正的目标却是函数指针；
   栈还少了一项，后面的返回跟着错位。
 
+返回地址栈在这两种写法下怎么一步步错位，见 riscv-isa 的 [06-ras.md](../riscv-isa/06-ras.md) 第 5、6 节。
+
 编号相同那一行只压不弹，普通的 `call f` 就靠它：目标文件里 `call f` 是 `auipc ra, …` 加
 `jalr ra, …(ra)`，rd、rs1 都是 ra。规范说这样定是为了让这一对指令能合并成一条执行（macro-op fusion，`rv32.adoc:553`）。
 

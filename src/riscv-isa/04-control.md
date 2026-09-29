@@ -44,7 +44,7 @@ jalr rd, i(rs) rd ← pc+4 ；pc ← (rs + i)，最低位清 0        rs 可以�
 - auipc 加 jalr 可以跳到相对 pc ±2 GiB 的任何地方（`rv32.adoc:483`）：auipc 装 D 的高 20 位，jalr 补低
   12 位，算法同 03 第 4 节。
 - 伪指令：`j L` 是 `jal zero, L`；`ret` 是 `jalr zero, 0(ra)`；`call`、`tail`、`jump` 展开成 auipc 加 jalr（第 4 节）。
-- rd 写 ra 还是 zero，还关系到处理器的返回地址预测，见 riscv-registers 的 02 第 3.1 节。
+- rd、rs1 写哪个寄存器，还关系到处理器的返回地址预测，见 06。
 
 ## 3. 距离不够时谁来补
 
