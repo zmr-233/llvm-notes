@@ -5,5 +5,5 @@
 
 `src/` 下是带可运行例子的专题整理，目前有 [ccache](src/ccache-guide/README.md)、
 [clang driver 里的 RISC-V 裸机工具链](src/riscv-toolchain-driver/README.md)、
-[`git rebase --onto`](src/git-rebase-onto/README.md) 与
-[RISC-V 寄存器](src/riscv-registers/README.md)。
+[`git rebase --onto`](src/git-rebase-onto/README.md)、
+[RISC-V 寄存器](src/riscv-registers/README.md) 与 [RISC-V 指令集基础](src/riscv-isa/README.md)。

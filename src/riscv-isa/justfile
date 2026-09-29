@@ -1,0 +1,40 @@
+# RISC-V 指令集实验的四个动词，在本目录下运行。
+# 工具路径全部来自同目录的 .env（格式见 README.md），缺文件或缺键即失败。
+# 中间产物放在 mktemp 建的临时目录里，命令结束即删除。
+
+set dotenv-load := true
+set dotenv-required := true
+
+target := "--target=riscv32-unknown-elf"
+
+# 编译成汇编，删掉汇编指示、注释行和标签后的「# @函数名」，只留标签和指令
+asm file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -S -o - {{ file }} \
+      | grep -vE '^\s+\.|^\s*#|^$|^\.Lfunc_end' | sed 's/:[[:space:]]*# @.*$/:/'
+
+# 编译或汇编成目标文件再反汇编。每行是「偏移: 编码  指令」
+dis file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -c -o "$d/a.o" {{ file }}
+    "${OBJDUMP:?.env 缺 OBJDUMP}" -d -M no-aliases "$d/a.o" | sed '1,/^Disassembly/d'
+
+# 编译或汇编成目标文件，列出重定位项（链接器要改写的位置）
+reloc file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -c -o "$d/a.o" {{ file }}
+    "${READELF:?.env 缺 READELF}" -r --wide "$d/a.o" | sed -n '/Offset/,$p'
+
+# 编译或汇编成目标文件，用 ld.lld 链接（代码段放在地址 0），再反汇编
+link file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -c -o "$d/a.o" {{ file }}
+    "${LLD:?.env 缺 LLD}" --image-base=0 -Ttext=0 -e 0 "$d/a.o" -o "$d/a.elf"
+    "${OBJDUMP:?.env 缺 OBJDUMP}" -d -M no-aliases "$d/a.elf" | sed '1,/^Disassembly/d'
