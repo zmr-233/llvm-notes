@@ -20,6 +20,8 @@ XLEN、扩展、`-march`、`-mabi`、伪指令、链接器松弛这些词在它�
    序言与尾声，叶函数与尾调用
 6. [06-ras.md](06-ras.md)：返回地址栈按 jalr 的寄存器编号压、弹；它为什么限制了间接调用、间接尾调用
    能用的寄存器；x5 与 millicode（-msave-restore）；millicode 与微码的区别
+7. [07-outline.md](07-outline.md)：用公共代码换体积的三种形态：-msave-restore、Machine Outliner、
+   push/pop；链接前后的大小；怎么查一个构建用了哪种；21.1.8 上还空着的地方
 
 ## 版本与出处
 
@@ -62,7 +64,7 @@ LLD=/path/to/bin/ld.lld
 
 ### just 动词
 
-`just` 读本目录的 `justfile`。四个动词都把中间文件放在 `mktemp -d` 建的临时目录里，命令结束即删。
+`just` 读本目录的 `justfile`。五个动词都把中间文件放在 `mktemp -d` 建的临时目录里，命令结束即删。
 
 - `just asm <文件> <编译参数…>`
   运行 `$CLANG --target=riscv32-unknown-elf <编译参数> -S -o - <文件>`，再删掉以 `.` 开头的
@@ -84,6 +86,12 @@ LLD=/path/to/bin/ld.lld
   - `-Ttext=0`：代码段放在地址 0，链接后的地址和目标文件里的偏移一致，方便对照。
   - `--image-base=0`：ld.lld 默认要求段地址不小于映像基址 0x10000，不加这一项，上一项会报错。
   - `-e 0`：入口地址设为 0。实验文件里没有 `_start`，不指定入口 ld.lld 会警告。
+- `just size <文件> <编译参数…>`
+  编译成目标文件，像 `link` 一样链接，再用 `$READELF -S --wide` 读出目标文件和链接结果里 `.text` 段的大小，
+  打印成「链接前 N 字节，链接后 M 字节」。
+  - `--unresolved-symbols=ignore-all`（交给 ld.lld）：未定义的符号不报错，按地址 0 处理。实验文件只声明、
+    不定义被调用的函数，只为量大小，不运行。
+  - `-S`（交给 llvm-readelf）：打印段表，其中一列是每个段的字节数（十六进制），justfile 把它换成十进制。
 
 ### 编译参数
 
@@ -92,7 +100,10 @@ LLD=/path/to/bin/ld.lld
   `ex/li64.c` 就是这样得到 64 位代码的。
 - `-march=rv32i`、`rv32im`、`rv32ic`：可用的指令。`i` 是基础整数指令集，`m` 是乘除，`c` 是 16 位压缩指令。
 - `-mabi=ilp32`、`lp64`：调用约定，见 riscv-registers 的 01。
-- `-Os`、`-O2`：按代码体积、按速度优化。
+- `-Os`、`-O2`：按代码体积、按速度优化。`-Oz` 比 `-Os` 更偏重体积，见 07。
+- `-msave-restore`：序言、尾声改成调用库函数 `__riscv_save_N`、`__riscv_restore_N`，见 06 第 8 节。
+- `-mno-outline`：关掉 Machine Outliner；`-moutline`：打开它，clang 21.1.8 对 RISC-V 不认。见 07。
+- `-march=rv32imc_zcmp`：再加上 Zcmp 扩展（`cm.push`、`cm.popret` 等），见 07。
 - `-mcmodel=medlow`、`medany`：代码模型，见 03。
 - `-mrelax`、`-mno-relax`：是否允许链接器松弛。关掉时，汇编器能算的立即数自己算好；打开时，
   汇编器把它们留给链接器，并附上可以改写的标记。
@@ -100,6 +111,7 @@ LLD=/path/to/bin/ld.lld
   自己的命令行选项机制；clang 的命令行不认识这些选项，要经 `-mllvm` 转交。
   - `-mllvm -riscv-no-aliases`：汇编输出按真实指令打印。
   - `-mllvm -riscv-max-build-ints-cost=N`：见 02 第 4 节。
+  - `-mllvm -enable-machine-outliner`：对所有函数跑 Machine Outliner，见 07。
 - `-Wa,<参数>`：把逗号后面的参数转交给汇编器。`ex/far.s` 用 `-Wa,--defsym,SPACE=N` 定义汇编符号
   SPACE 的值。
 
@@ -116,3 +128,4 @@ LLD=/path/to/bin/ld.lld
 - `ex/call.s`：call、tail 与链接器松弛（04）
 - `ex/ret.c`：参数与返回值放在哪，RV32 与 RV64 对比（05）
 - `ex/frame.c`：序言与尾声、叶函数、尾调用，call/tail/ret 的真实指令，-msave-restore（05、06）
+- `ex/outline.c`：Machine Outliner 抽出的两种公共片段，外提、-msave-restore、Zcmp 在链接前后的大小（07）

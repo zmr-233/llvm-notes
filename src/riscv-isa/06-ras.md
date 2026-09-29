@@ -202,6 +202,8 @@ restore 的 ret      弹 r_keep，实际回 keep 的调用者：对
 
 r_save 指 save 返回到 keep 的地址，即 `call t0, …` 的下一条。每个压、弹都对上了。
 
+编译器也会自己生成这种用 t0 调用的公共片段，见 07。
+
 ## 9. millicode 不是微码
 
 微码（microcode）是另一回事，名字相近，容易混：

@@ -1,4 +1,4 @@
-# RISC-V 指令集实验的四个动词，在本目录下运行。
+# RISC-V 指令集实验的五个动词，在本目录下运行。
 # 工具路径全部来自同目录的 .env（格式见 README.md），缺文件或缺键即失败。
 # 中间产物放在 mktemp 建的临时目录里，命令结束即删除。
 
@@ -29,6 +29,16 @@ reloc file *flags:
     d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
     "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -c -o "$d/a.o" {{ file }}
     "${READELF:?.env 缺 READELF}" -r --wide "$d/a.o" | sed -n '/Offset/,$p'
+
+# 编译成目标文件再链接，打印两边 .text 的字节数：链接前的，和链接器松弛之后的
+size file *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    d=$(mktemp -d); trap 'rm -rf "$d"' EXIT
+    "${CLANG:?.env 缺 CLANG}" {{ target }} {{ flags }} -c -o "$d/a.o" {{ file }}
+    "${LLD:?.env 缺 LLD}" --image-base=0 -Ttext=0 -e 0 --unresolved-symbols=ignore-all "$d/a.o" -o "$d/a.elf"
+    text() { printf '%d' "0x$("${READELF:?.env 缺 READELF}" -S --wide "$1" | awk '$0 ~ / \.text / {print $(NF-5)}')"; }
+    echo "链接前 $(text "$d/a.o") 字节，链接后 $(text "$d/a.elf") 字节"
 
 # 编译或汇编成目标文件，用 ld.lld 链接（代码段放在地址 0），再反汇编
 link file *flags:

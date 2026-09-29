@@ -54,6 +54,8 @@ keep   addi sp,sp,-16 ; sw ra,12(sp) ; sw s0,8(sp) ; mv s0,a0
     另一个入口，存 ra 和 s0–s6。存的比需要的多，换来函数本身只有首尾两条调用。
   - 每条调用在目标文件里是 8 字节。只存一个 s0 时，它比默认写法还大；要存 4 个时就小了。
     链接器松弛还能把调用缩短（`ex/gp/main.c` cell 1）。
+  - `-Oz` 下编译器还会自己把重复的尾声抽成公共片段（Machine Outliner），见 riscv-isa 的
+    [07-outline.md](../riscv-isa/07-outline.md)。
 - Zcmp：`cm.push {ra, s0}, -16` 一条 2 字节指令完成存 ra、s0 和 sp 减 16；`cm.popret` 取回、
   sp 加回、返回。
   - 寄存器列表只能是 {ra}、{ra, s0}、{ra, s0-s1} … {ra, s0-s9}、{ra, s0-s11}，即从 s0 开始连续
