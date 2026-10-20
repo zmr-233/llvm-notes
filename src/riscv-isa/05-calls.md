@@ -197,5 +197,10 @@ llvmorg-21.1.8。LLVM 把一个函数翻成机器指令时，函数入口、调�
   - LowerReturn（:22832）：把返回值放进 a0、a1。
 - `RISCV/RISCVCallingConv.td:16–19`：被调用者保存列表，是 ra、s0–s11。sp 不在列表里，由序言、尾声
   单独处理；ra 在列表里的原因见 riscv-registers 的 03 第 3 节。
-- `RISCV/RISCVFrameLowering.cpp:896` 的 emitPrologue、:1180 的 emitEpilogue：生成序言和尾声，
-  按函数实际改了哪些列表里的寄存器决定存哪些。
+- 序言、尾声分三步生成，都由 `llvm/lib/CodeGen/PrologEpilogInserter.cpp`（PEI）依次调用：
+  - 存哪些：`RISCV/RISCVFrameLowering.cpp:1520` 的 determineCalleeSaves（PEI 在 :671 调用）。它先调
+    通用的实现，列表里哪个寄存器在函数里被写过就存哪个（`llvm/lib/CodeGen/TargetFrameLoweringImpl.cpp:145`）。
+    call 会写 ra，所以有调用就存 ra；
+  - 存取指令：:2030 的 spillCalleeSavedRegisters、:2170 的 restoreCalleeSavedRegisters，插入 keep 里的
+    `sw ra`、`sw s0` 和对应的 lw；
+  - 开栈、还栈：:896 的 emitPrologue、:1180 的 emitEpilogue，插入 `addi sp, sp, -16` 和 `addi sp, sp, 16`。
