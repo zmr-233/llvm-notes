@@ -5,33 +5,19 @@ riscv-isa 的 [05-calls.md](../riscv-isa/05-calls.md)，本篇在它的基础上
 
 本篇的实验都用 `-march=rv32imc -mabi=ilp32 -Os`，除非另外写明。
 
-## 1. 保存责任落在谁身上
+## 1. 保存责任在 LLVM 里落在哪
 
-实验 `ex/save.c` cell 1。`g` 只有声明，编译器看不到它的内部，只能按调用约定假设：g 会改写所有
-调用者保存寄存器，不会改写被调用者保存寄存器。
-
-```
-leaf   slli a2,a0,1 ; add a0,a0,a1 ; add a0,a0,a2 ; ret
-tail   addi a0,a0,1 ; tail g
-keep   addi sp,sp,-16 ; sw ra,12(sp) ; sw s0,8(sp) ; mv s0,a0
-       call g ; add a0,a0,s0
-       lw ra,12(sp) ; lw s0,8(sp) ; addi sp,sp,16 ; ret
-```
-
-- leaf：不调用别的函数，只用调用者保存的 a0–a2，没有序言和尾声。
-- tail：调用 g 之后不再用 x，于是直接跳到 g，由 g 返回到 tail 的调用者。tail 没改 ra，不用存。
-- keep：`call g` 之后还要用 x。x 进来时在 a0，g 可以改 a0，所以先挪进 s0。s0 是被调用者保存
-  寄存器，keep 用了它，就要替自己的调用者保住：`sw s0` / `lw s0`。`call g` 会改写 ra，keep 最后
-  `ret` 要用进来时的 ra，所以 ra 也存。
-- keep 只存 8 字节，却开了 16 字节的栈：ilp32 要求 sp 16 字节对齐（第 4 节）。
+调用者保存、被调用者保存的规则，以及 leaf、tail、keep 三个函数逐条的讲解，见 riscv-isa 05 第 4、6、7 节。
+实验 `ex/save.c` cell 1 是同一组函数加上 C 扩展编译的，keep 的指令和那边一样：存 ra、s0，开 16 字节。
 
 这条规则在 LLVM 里落在两处：
 
-- 每条调用指令带一个寄存器掩码，列出调用之后仍保持原值的寄存器，即被调用者保存列表
+- 调用这一侧。每条调用指令带一个寄存器掩码，列出调用之后仍保持原值的寄存器，即被调用者保存列表
   （`RISCV/RISCVRegisterInfo.cpp:811` 的 getCallPreservedMask，按 ABI 返回
   `CSR_ILP32_LP64_RegMask` 等）。一个值要跨过调用继续用，分配器只能把它放进掩码里的寄存器，
-  或者存到栈上。
-- 函数自己改了列表里的哪个寄存器，序言就存哪个、尾声就取哪个（列表由 getCalleeSavedRegs 给出）。
+  或者存到栈上。keep 把 x 挪进 s0，就是这条限制的结果。
+- 序言这一侧。函数自己改了列表里的哪个寄存器，序言就存哪个（列表由 getCalleeSavedRegs 给出），
+  由哪几个函数完成见 riscv-isa 05 第 8 节。
 
 ## 2. 序言和尾声的三种写法
 
@@ -45,8 +31,10 @@ keep   addi sp,sp,-16 ; sw ra,12(sp) ; sw s0,8(sp) ; mv s0,a0
 -march=rv32imc_zcmp    cm.push {ra, s0}, -16 … cm.popret {ra, s0}, 16       16     32
 ```
 
-- `-msave-restore`：序言和尾声换成调用库函数 `__riscv_save_N`、`__riscv_restore_N`，N 是要存的
-  s 寄存器个数。这两组函数由 compiler-rt 或 libgcc 提供。
+- `-msave-restore`：序言和尾声换成调用库函数 `__riscv_save_N`、`__riscv_restore_N`。这两组函数由
+  compiler-rt 或 libgcc 提供。
+  - N 由要存的编号最大的 s 寄存器决定：最高到 s(N-1) 就是 N（`RISCV/RISCVFrameLowering.cpp:353` 的
+    getLibCallID）。只存 s0、s2 时调的是 `__riscv_save_3`，s1 也跟着存。
   - 调用写的是 `call t0, …`，返回地址放进 t0：此刻 ra 里还是 keep 自己的返回地址，不能覆盖。
     t0 是硬件认作链接寄存器的另一个编号（02 第 3.1 节）。
   - llvmorg-21.1.8 的 `compiler-rt/lib/builtins/riscv/save.S` 里，RV32 上 `__riscv_save_0` 到
@@ -89,8 +77,7 @@ psABI 把 ra 算作调用者保存。LLVM 却把 X1 放进了被调用者保存�
 
 - 参数寄存器按顺序分配：ilp32 用 x10–x17，ilp32e 用 x10–x15（`RISCV/RISCVCallingConv.cpp:130`、:134）。
   放不下的参数由调用者放在自己的栈上，被调函数进入时从 0(sp) 往上排。
-- 返回值在 a0。RV32 上的 64 位整数拆成两个寄存器，低 32 位在编号小的那个：add64 的 a 在 a0（低）、
-  a1（高），返回值同样在 a0、a1。
+- add64 在两种 ABI 下一样：64 位整数占两个寄存器，规则见 riscv-isa 05 第 5 节。
 - 栈对齐：ilp32e 是 4 字节，其他 ABI 是 16 字节（`RISCV/RISCVFrameLowering.cpp:35`）。
 
 ## 5. fp：s0

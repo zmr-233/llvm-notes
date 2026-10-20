@@ -80,7 +80,7 @@
 // ---- cell 3：-msave-restore ----
 //
 // -msave-restore：序言和尾声改成调用 compiler-rt 或 libgcc 里的 __riscv_save_N、
-// __riscv_restore_N，N 是要存的 s 寄存器个数。
+// __riscv_restore_N。N 由要存的编号最大的 s 寄存器决定：最高到 s(N-1) 就是 N，只存 s0、s2 也是 N=3。
 //
 //   $ just dis ex/frame.c -march=rv32im -mabi=ilp32 -Os -msave-restore
 //

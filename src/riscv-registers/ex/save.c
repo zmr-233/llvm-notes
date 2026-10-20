@@ -40,7 +40,7 @@
 // ---- cell 2：-msave-restore ----
 //
 // -msave-restore：序言和尾声改成调用库函数 __riscv_save_N / __riscv_restore_N，
-// N 是要存的 s 寄存器个数。
+// N 由要存的编号最大的 s 寄存器决定：最高到 s(N-1) 就是 N，只存 s0、s2 也是 N=3。
 //
 //   $ just asm ex/save.c -march=rv32imc -mabi=ilp32 -Os -msave-restore
 //
