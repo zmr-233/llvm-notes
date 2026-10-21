@@ -36,17 +36,17 @@ trans_csrrw、trans_csrrs、trans_csrrc：
 
 ```
 x0        zero     恒为 0
-x1        ra       返回地址          调用者保存
-x2        sp       栈指针            被调用者保存
-x3        gp       全局指针          不参与分配
-x4        tp       线程指针          不参与分配
-x5–x7     t0–t2    临时              调用者保存
-x8        s0/fp    保存 / 帧指针     被调用者保存
-x9        s1       保存              被调用者保存
-x10–x11   a0–a1    参数 / 返回值     调用者保存
-x12–x17   a2–a7    参数              调用者保存
-x18–x27   s2–s11   保存              被调用者保存
-x28–x31   t3–t6    临时              调用者保存
+x1        ra       返回地址          caller-save
+x2        sp       栈指针            callee-save
+x3        gp       全局指针          -
+x4        tp       线程指针          -
+x5–x7     t0–t2    临时              caller-save
+x8        s0/fp    保存 / 帧指针     callee-save
+x9        s1       保存              callee-save
+x10–x11   a0–a1    参数 / 返回值     caller-save
+x12–x17   a2–a7    参数              caller-save
+x18–x27   s2–s11   保存              callee-save
+x28–x31   t3–t6    临时              caller-save
 ```
 
 - 名字取自 LLVM 的寄存器定义：`RISCV/RISCVRegisterInfo.td:94` 起，每个寄存器定义的第三个参数
